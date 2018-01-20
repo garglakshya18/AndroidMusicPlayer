@@ -24,6 +24,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <service android:name="com.example.lakshya.MusicService" />
+        <service android:name="com.example.lakshya.music_player.MusicService" />
     </application>
 </manifest>
