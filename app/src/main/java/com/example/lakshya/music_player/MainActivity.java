@@ -2,6 +2,7 @@ package com.example.lakshya.music_player;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.app.Service;
 import android.content.ComponentName;
 import android.content.Context;
@@ -22,15 +23,23 @@ import java.util.Comparator;
 import android.net.Uri;
 import android.content.ContentResolver;
 import android.database.Cursor;
+import android.util.AttributeSet;
+import android.view.Menu;
+import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.widget.BaseAdapter;
+import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.MediaController;
+import android.widget.MediaController.MediaPlayerControl;
+import android.widget.Toast;
 
 import com.example.lakshya.music_player.MusicService;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements MediaPlayerControl {
 
     private ArrayList<Song> songList;
     private ListView songView;
@@ -76,6 +85,16 @@ public class MainActivity extends AppCompatActivity {
         });
         SongAdapter songAdt = new SongAdapter(this, songList);
         songView.setAdapter(songAdt);
+        LinearLayout root = findViewById(R.id.root);
+
+        ViewTreeObserver vto = root.getViewTreeObserver();
+        vto.addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+                //Call your controller set-up now that the layout is loaded
+                setController();
+            }
+        });
     }
 
     private MusicService musicSrv;
@@ -110,16 +129,18 @@ public class MainActivity extends AppCompatActivity {
     public void songPicked(View view) {
         musicSrv.setSong(Integer.parseInt(view.getTag().toString()));
         musicSrv.playSong();
+        if (playbackPaused) playbackPaused = false;
     }
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
             case R.id.action_shuffle:
+                musicSrv.setShuffle();
                 break;
             case R.id.action_end:
                 stopService(playIntent);
-                musicSrv=null;
+                musicSrv = null;
                 System.exit(0);
                 break;
         }
@@ -127,10 +148,159 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    public void onDestroy(){
+    public void onDestroy() {
+        if (musicBound) unbindService(musicConnection);
         stopService(playIntent);
         musicSrv = null;
         super.onDestroy();
+    }
+
+    @Override
+    public void start() {
+        musicSrv.go();
+    }
+
+    @Override
+    public void pause() {
+        playbackPaused = true;
+        musicSrv.pausePlayer();
+    }
+
+    @Override
+    public int getDuration() {
+        if (musicSrv != null && musicBound && musicSrv.isPng())
+            return musicSrv.getDur();
+        else {
+            if (playbackPaused) {
+                assert musicSrv != null;
+                return musicSrv.getDur();
+            }
+            return 0;
+        }
+    }
+
+    @Override
+    public int getCurrentPosition() {
+        if (musicSrv != null && musicBound && musicSrv.isPng())
+            return musicSrv.getPosn();
+        else {
+            if (playbackPaused) {
+                assert musicSrv != null;
+                return musicSrv.getPosn();
+            }
+            return 0;
+        }
+    }
+
+    @Override
+    public void seekTo(int i) {
+        musicSrv.seek(i);
+    }
+
+    @Override
+    public boolean isPlaying() {
+        return musicSrv != null && musicBound && musicSrv.isPng();
+    }
+
+    @Override
+    public int getBufferPercentage() {
+        return 0;
+    }
+
+    @Override
+    public boolean canPause() {
+        return true;
+    }
+
+    @Override
+    public boolean canSeekBackward() {
+        return true;
+    }
+
+    @Override
+    public boolean canSeekForward() {
+        return true;
+    }
+
+    @Override
+    public int getAudioSessionId() {
+        return 0;
+    }
+
+    @SuppressLint("StaticFieldLeak")
+    private static MusicController controller;
+
+    private void setController() {
+        controller = new MusicController(this);
+        controller.setPrevNextListeners(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                playNext();
+            }
+        }, new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                playPrev();
+            }
+        });
+        controller.setMediaPlayer(this);
+        controller.setAnchorView(findViewById(R.id.song_list));
+        controller.setEnabled(true);
+    }
+
+    public void playNext() {
+        musicSrv.playNext();
+        if (playbackPaused) {
+            setController();
+            playbackPaused = false;
+        }
+    }
+
+    public void playPrev() {
+        musicSrv.playPrev();
+        if (playbackPaused) {
+            setController();
+            playbackPaused = false;
+        }
+        controller.show(0);
+    }
+
+    private boolean paused = false, playbackPaused = false;
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        paused = true;
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (paused) {
+            setController();
+            paused = false;
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        controller.hide();
+        super.onStop();
+    }
+
+    public boolean onCreateOptionsMenu(Menu menu) {
+        MenuInflater inflater = getMenuInflater();
+        inflater.inflate(R.menu.main, menu);
+        return true;
+    }
+
+    @Override
+    public void onBackPressed() {
+        moveTaskToBack(true);
+    }
+
+    public static void showController() {
+        controller.show(0);
     }
 }
 
